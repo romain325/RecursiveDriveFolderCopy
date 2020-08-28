@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
+    <?!= include('View/style'); ?>
+  </head>
+  <body>
+    <form id="newEntryForm">
+      <script type="text/javascript">
+            function grise(element) {
+                document.getElementById(element).disabled = 'disabled';
+            }
+      </script>
+      <h3 style="color: red;font-weight:bold;">WARNING, don't copy a folder inside of himself! at any depth!</h3>
+      <table>
+      <P>
+        <tr>
+          <td>URL of the folder you want to copy: </td>
+          <td><input type='text' name='url' id='url'></td>
+          <td><button onclick="UsePicker('url')">Select</button></td>
+        </tr>
+         <tr>
+          <td>New Folder Name</td>
+          <td><input type='text' name='nom' id='nom'></td>
+        </tr>
+        <tr>
+          <td>URL of the new place(not mandatory)</td>
+          <td><input type='text' name='empl' id='empl'></td>
+          <td><button onclick="UsePicker('empl')">Select</button></td>
+        </tr>
+        <tr>
+            <td><input type='checkbox' id='selectSub'/>Choose the subfolders to exclude (first depth only) </td>
+            <td><button onclick="RefreshSubFolder()">Refresh</button></td>
+        </tr>
+        
+        <tr id="subfolders">
+        </tr>
+        <tr>    
+          <td colspan="2">
+            <div class="center">
+              <input type="button" value="Valider" name="submit" id="submitButton" onclick="Validation()"/>
+            </div>
+          </td>
+        </tr>     
+        <tr><td colspan="2"><span id="errorMessage"></span></td></tr>
+        </P>
+      </table>
+      <span id='errorMsg'></span>
+    </form>
+    <script   src="https://code.jquery.com/jquery-3.5.1.slim.min.js"
+              integrity="sha256-4+XzXVhsDmqanXGHaHvgh1gMQKX40OUvDEBTu8JcmNs="
+              crossorigin="anonymous"></script>
+    <script>
+    var DIALOG_DIMENSIONS = {
+        width: 800,
+        height: 600
+    };
+    var pickerApiLoaded = false, picker, writeID;
+
+
+    function onApiLoad() {
+        gapi.load('picker', {
+            'callback': function() {
+                pickerApiLoaded = true;
+            }
+        });
+        google.script.run.withSuccessHandler(createPicker).withFailureHandler(printError).getOAuthToken();
+    }
+
+      var current;
+        $(document).ready(() => {
+          $('#selectSub').on('change',RefreshSubFolder());
+          $('#url').on('change',RefreshSubFolder());
+        });
+
+        function Validation(){
+            var sub = [];
+            var ids = ($('#url').val()).split('/'), name = $('#nom').val(), empl = ($('#empl').val()).split('/');
+            var id = ids[ids.length -1], emplId = "";
+            if(empl !== ""){
+              emplId = empl[empl.length - 1];
+            }
+
+            if(id === "" || name === ""){
+              $('#errorMsg').text("All the mandatory fields aren't fulfilled");
+              return;
+            }
+
+            if( $('#selectSub').prop('checked')){
+              if(current != id){
+                $('#errorMsg').text("The SubFolders doesn't match with the current selected folder");
+                RefreshSubFolder();
+                return;  
+              }
+              $('.excluded').each((n,elem) => {
+                if($(elem).prop('checked')){
+                  sub.push($(elem)[0].id);
+                }
+              });
+            }
+
+            $('#errorMsg').text("The Copy started.");
+
+            google.script.run
+                .withFailureHandler((error) => {printError(error); google.script.run.sendFailMail();})
+                .withSuccessHandler(() => {
+                  $('#errorMsg').text("Copying, you'll recieve a mail when ended !");
+                })
+                .startCopy(id, name, emplId, sub);
+        }
+
+
+        function RefreshSubFolder(){
+          $('#subfolders').html('');
+          var ids = ($('#url').val()).split('/');
+          var id = ids[ids.length-1];
+          if(id === ""){
+            $('#selectSub').prop('checked', false);
+            return;
+          }
+          current = id;
+
+            google.script.run
+              .withSuccessHandler((table)=>{
+                  $.each(table, (n,elem) => {
+                    console.log(elem);
+                    $('#subfolders').append('<div><input type="checkbox" id="'+elem+'" class="excluded"/><label>'+elem+'</label></div>');
+                  });
+              })
+              .withFailureHandler(error => printError(error))
+              .getSubFolders(id)
+        }
+
+        function printError(error){
+          console.log(error);
+          $('#errorMsg').text('An error occurred \n Error: \n'+ error);
+        }
+    
+        function UsePicker(valId){
+            showPicker(valId);
+        }
+    
+
+
+      function createPicker(token) {
+
+          if (pickerApiLoaded && token) {
+
+            var docsView = new google.picker.DocsView()
+                .setIncludeFolders(true)
+                .setMimeTypes('application/vnd.google-apps.folder')
+                .setSelectFolderEnabled(true);
+
+            picker = new google.picker.PickerBuilder()
+                .addView(docsView)
+                .enableFeature(google.picker.Feature.NAV_HIDDEN)
+                .hideTitleBar()
+                .setSize(DIALOG_DIMENSIONS.width - 2, DIALOG_DIMENSIONS.height - 2)
+                .setOAuthToken(token)
+                .setCallback(pickerCallback)
+                .setOrigin('https://docs.google.com')
+                .build();
+
+            //picker.setVisible(true);
+
+        } else {
+            printError('Unable to load the file picker.');
+        }
+      }
+
+      function pickerCallback(data) {
+        var action = data[google.picker.Response.ACTION];
+        if (action == google.picker.Action.PICKED) {
+            var doc = data[google.picker.Response.DOCUMENTS][0];
+            var id = doc[google.picker.Document.ID];
+
+            //google.script.run.withSuccessHandler(hidePicker).withFailureHandler(printError).WriteSelectedToCell(id);
+            hidePicker();
+            console.log(id);
+            console.log(writeID);
+            $('#'+writeID).val(id)
+            
+
+        }
+        else if (action == google.picker.Action.CANCEL) {
+            google.script.host.close();
+        }
+    }
+
+    function hidePicker(){
+        picker.setVisible(false);
+    }
+
+    function showPicker(id) {
+      writeID = id;
+      picker.setVisible(true);
+    }
+    </script>
+    <script type="text/javascript" src="https://apis.google.com/js/api.js?onload=onApiLoad"></script>
+
+  </body>
+</html>
